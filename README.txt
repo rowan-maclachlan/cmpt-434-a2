@@ -1,0 +1,10 @@
+Rowan Maclachlan
+rdm695 11165820
+Sunday January 27th 2019
+CMPT 434 Eager
+
+Assignment 2
+
+TESTING INSTRUCTIONS
+
+POSSIBLE ISSUES WITH TESTING:

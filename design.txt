@@ -1,0 +1,17 @@
+Rowan Maclachlan
+rdm695 11165820
+Sunday January 27th 2019
+CMPT 434 Eager
+
+Assignment 2
+
+SEE LIMITATIONS BELOW 
+
+DESIGN
+
+consider using 'select' and 'poll'
+the sender has to send packets, but they also have to listen for acks.
+
+
+LIMITATIONS
+
