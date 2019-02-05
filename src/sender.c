@@ -75,10 +75,10 @@ bool _init_args(int argc, char **argv, char *ip_address, char *port, uint32_t *t
 int _get_line(char *msg_buf) {
     size_t max = MAXLINE;
     int num_bytes = 0;
-    while(0 >= num_bytes) {
+    while(1 >= num_bytes) {
         printf("Enter input line for message:\n");
         num_bytes = getline(&msg_buf, &max, stdin); 
-        if (0 >= num_bytes) {
+        if (1 >= num_bytes) {
             perror("Failed to read input in sender: get_line:");
         }
     }
@@ -91,34 +91,77 @@ int _get_line(char *msg_buf) {
     return num_bytes;
 }
 
-void send_loop(int sockfd, char *port, struct addrinfo *p) {
+int _get_ack(int sockfd, ack_t *ack, struct sockaddr_storage *their_addr, socklen_t *addr_len) {
+    int num_bytes;
+
+    if (-1 == (num_bytes = recvfrom(
+                    sockfd, (void*) ack, sizeof (ack_t) , 0, 
+                    (struct sockaddr *)their_addr, addr_len))) {
+        perror("recvfrom");
+        return -1;
+    }
+
+    if (num_bytes != sizeof (ack_t)) {
+        fprintf(stderr, "Failed to recieve ACK correctly.  Got %u.\n", *ack);
+        return -1;
+    }
+
+    return 0;
+}
+
+void send_loop(int sockfd, char *port, struct addrinfo *p, uint32_t window_size) {
+    struct msg_queue msg_q;
     int num_bytes;
     struct sockaddr_storage their_addr;
     socklen_t addr_len;
-    char s[INET6_ADDRSTRLEN] = { 0 };
     char msg_buf[MAXLINE] = { 0 };
+    char *ser_msg;
+    struct msg msg;
+    ack_t ack;
 
+    init_msg_q(&msg_q, window_size);
+
+    ack_t msg_seq = 0;
     while(1) {
-        num_bytes = _get_line(msg_buf);
+        _get_line(msg_buf);
+        msg.seq = msg_seq;
+        msg.payload = strdup(msg_buf);
+        if (-1 == add_msg(&msg_q, &msg)) {
+            fprintf(stderr, "Failed to add message to buffer.");
+            continue;
+        }
+        free(msg.payload);
+
+        if (NULL == (ser_msg = serialize_msg(&msg))) {
+            fprintf(stderr, "Failed to serialized message.\n");
+            continue;
+        }
+
         if (-1 == (num_bytes = sendto(
-                        sockfd, msg_buf, num_bytes, 0, p->ai_addr, p->ai_addrlen))) {
+                        sockfd, ser_msg, strlen(msg_buf) + sizeof (ack_t), 0, p->ai_addr, p->ai_addrlen))) {
             perror("sender: sendto");
-            exit(1);
+            fprintf(stderr, "Failed to send message to receiver.\n");
+            continue;
         }
         
         printf("sender: sent %d bytes...\n", num_bytes);
+        
+        // After we send and add to the queue, consider that we are waiting for
+        // ACKs to previously sent messages.
     
         addr_len = sizeof their_addr;
-        if ((num_bytes = recvfrom(sockfd, msg_buf, MAXLINE-1 , 0,
-            (struct sockaddr *)&their_addr, &addr_len)) == -1) {
-            perror("recvfrom");
-            exit(1);
+        if (-1 == _get_ack(sockfd, &ack, &their_addr, &addr_len)) {
+            fprintf(stderr, "Failed to get ack.\n");
+            continue;
         }
-    
-        printf("sender: got packet from %s\n",
-                inet_ntop(their_addr.ss_family,
-                get_in_addr((struct sockaddr *)&their_addr),
-                s, sizeof s));
+        printf("Got ack %u\n", ack);
+
+        if (-1 == rmv_msg(&msg_q)) {
+            fprintf(stderr, "Failed to remove message %u from message queue.\n", ack);
+        }
+        printf("Removed message %u from buffer.\n", ack);
+
+        msg_seq = (msg_seq + 1) % msg_q.max_size;
     }
 }
 
@@ -129,6 +172,7 @@ int main(int argc, char **argv) {
     char ip_address[IP_SIZE] = { 0 };
     uint32_t timeout = 0;
     uint32_t window_size = 0;
+
     
     if (!_init_args(argc, argv, ip_address, port, &timeout, &window_size)) {
         fprintf(stderr, USAGE, argv[0]);
@@ -163,7 +207,7 @@ int main(int argc, char **argv) {
     free(servinfo);
 
     printf("sender: sending messages to %s\n", ip_address);
-    send_loop(sockfd, port, p);
+    send_loop(sockfd, port, p, window_size);
 
     close(sockfd);
     

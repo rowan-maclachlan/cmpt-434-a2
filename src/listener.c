@@ -23,9 +23,9 @@ void listen_loop(int sockfd) {
     int numbytes = 0;
     char s[INET6_ADDRSTRLEN] = { 0 };
     char msg_buf[MAXLINE] = { 0 };
-    char *msg = "ACK";
     struct sockaddr_storage their_addr;
     socklen_t their_addr_len = 0;
+    struct msg msg;
 
     printf("listener: waiting to recvfrom...\n");
     their_addr_len = sizeof their_addr;
@@ -42,18 +42,19 @@ void listen_loop(int sockfd) {
                 inet_ntop(their_addr.ss_family,
                 get_in_addr((struct sockaddr *)&their_addr), s, sizeof s));
 
-        printf("listener: packet is %d bytes long\n", numbytes);
-        msg_buf[numbytes] = '\0';
-        printf("listener: packet contains \"%s\"\n", msg_buf);
+        // put the first word of the msg_buf into ack
+        deserialize_msg(msg_buf, &msg);
+        
+        print_msg(&msg);
 
         if (-1 == (numbytes =
-                   sendto(sockfd, msg, strlen(msg), 0,
+                   sendto(sockfd, (void*)&(msg.seq), sizeof (ack_t), 0,
                    (struct sockaddr *)&their_addr,
                    their_addr_len))) {
             perror("listener: sendto");
             exit(1);
         }
-        printf("listener: sent %d bytes to %s\n", numbytes, s);
+        printf("listener: sent ack %u to %s\n", msg.seq, s);
     }
 }
 

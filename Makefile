@@ -15,7 +15,7 @@ ARCH := $(shell uname -m)
 MAC_OS="Darwin"
 LINUX_OS="Linux"
 ########################################
-TARGET = listener sender 
+TARGET = listener sender test
 ########################################
 # Directories
 OBJ = ./obj/
@@ -38,11 +38,13 @@ INC_FLAGS = -I$(INC)
 # server 
 LST_OBJ = $(OBJ)listener.o 
 SND_OBJ = $(OBJ)sender.o 
+SND_H = $(INC)sender.h
 CMN_H = $(INC)common.h
 CMN_OBJ = $(OBJ)common.o
+TEST_OBJ = $(OBJ)test.o
 # all
-ALL_OBJ = $(SND_OBJ) $(LST_OBJ) $(CMN_OBJ)
-ALL_H = $(CMN_H)
+ALL_H = $(CMN_H) $(SND_H)
+ALL_OBJ = $(CMN_OBJ) $(TEST_OBJ) $(SND_OBJ) $(LST_OBJ)
 EXEC = $(LST_DIR)listener $(SND_DIR)sender 
 ########################################
 # Recipes
@@ -56,15 +58,21 @@ listener : $(LST_OBJ) $(CMN_OBJ)
 # CLIENT
 sender : $(SND_OBJ) $(CMN_OBJ)
 	$(CC) $^ -o $(SND_DIR)$@ 
+# TEST
+test : $(TEST_OBJ) $(CMN_OBJ)
+	$(CC) $^ -o $@
 
 # SERVER OBJ FILES
 $(LST_OBJ) : $(SRC)listener.c $(CMN_H)
 	$(CC) $(INC_FLAGS) $(C_FLAGS) -c $< -o $@
 # CLIENT OBJ FILES
-$(SND_OBJ) : $(SRC)sender.c $(CMN_H)
+$(SND_OBJ) : $(SRC)sender.c $(CMD_H) $(SND_H)
 	$(CC) $(INC_FLAGS) $(C_FLAGS) -c $< -o $@
 # COMMON OBJ FILES
 $(CMN_OBJ) : $(SRC)common.c $(CMN_H)
+	$(CC) $(INC_FLAGS) $(C_FLAGS) -c $< -o $@
+# TEST OBJ FILES
+$(TEST_OBJ) : $(SRC)test.c $(CMN_H)
 	$(CC) $(INC_FLAGS) $(C_FLAGS) -c $< -o $@
 clean:
 	rm -f $(ALL_OBJ) 
