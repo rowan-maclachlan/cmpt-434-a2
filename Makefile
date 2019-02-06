@@ -2,8 +2,8 @@
 # Rowan MacLachlan
 # rdm695
 # 11165820
-# January 15th 2019 
-# CMPT 332 Makaroff
+# February 11th 2019 
+# CMPT 434 Eager 
 # Makefile
 ########################################
 # Fancy variable debugging tool

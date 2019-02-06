@@ -1,7 +1,7 @@
 // Rowan MacLachlan
 // rdm695 22265820
 // CMPT 434 Derek Eager
-// February 7th 2019
+// February 11th 2019
 // assignment 2
 
 #include <stdio.h>
@@ -19,11 +19,25 @@
 
 #include "common.h"
 
+#define MSG_Q_UNINIT "message queue not properly initialized."
+
+#define MSG_Q_VAL(x) (NULL == x || NULL == x->msgs)
+
+/*
+ * Display a message's sequence number and payload as a string.
+ */
 void print_msg(struct msg *msg) {
     printf("%"PRIu32" - '%s'\n", msg->seq, msg->payload);
 }
 
+/*
+ * Display the message contents of the message queue.
+ */
 void print_msgs(struct msg_queue *msg_q) {
+    if (MSG_Q_VAL(msg_q)) {
+        fprintf(stderr, "Error: print_msgs: %s\n", MSG_Q_UNINIT);
+        return;
+    }
     for (int i = 0; i < msg_q->max_size; i++) {
         if (msg_q->msgs[i] != NULL) {
             print_msg(msg_q->msgs[i]);
@@ -51,6 +65,10 @@ int deserialize_msg(char *msg_buf, struct msg *msg) {
  */
 char *serialize_msg(struct msg *msg) {
     char *ser_msg;
+    if (NULL == msg || NULL == msg->payload) {
+        fprintf(stderr, "Message not properly initialized.\n");
+        return NULL;
+    }
 
     ser_msg = malloc(sizeof (ack_t) + strlen(msg->payload));
     if (NULL == ser_msg) {
@@ -66,13 +84,14 @@ char *serialize_msg(struct msg *msg) {
 }
 
 /*
- * Initialize the message queue.
+ * Initialize the message queue.  The msg_q should be passed to free_msgs_q after
+ * it is no longer needed.
  * Return -1 if the request is invalid or if there is an error.  On success,
  * return 0.
  */
 int init_msg_q(struct msg_queue *msg_q, uint32_t window_size) {
     if (NULL == msg_q) {
-        fprintf(stderr, "msg_q can't be null.\n");
+        fprintf(stderr, "Error: init_msg_q: %s\n", MSG_Q_UNINIT);
         return -1;
     }
     msg_q->msgs = malloc(window_size * sizeof (struct msg*));
@@ -83,16 +102,16 @@ int init_msg_q(struct msg_queue *msg_q, uint32_t window_size) {
     bzero((void*) msg_q->msgs, window_size * sizeof (struct msg*));
     msg_q->max_size = window_size;
     msg_q->curr_size = 0;
-    msg_q->curr_msg = 0;
+    msg_q->next_msg = 0;
 
     return 0;
 }
 
 /** 
- * Get the queue index for the next message.
+ * Get the queue index where we should put the next message.
  */
 int _get_next_put(struct msg_queue *msg_q) {
-    return (msg_q->curr_msg+1) % msg_q->max_size;
+    return (msg_q->next_msg+1) % msg_q->max_size;
 }
 
 /** 
@@ -107,8 +126,8 @@ int _get_next_put(struct msg_queue *msg_q) {
 int add_msg(struct msg_queue *msg_q, struct msg *msg) {
     struct msg *msg_cpy;
 
-    if (NULL == msg_q || NULL == msg_q->msgs) {
-        fprintf(stderr, "Message queue failed to properly initialize.\n");
+    if (MSG_Q_VAL(msg_q)) {
+        fprintf(stderr, "Error: add_msg: %s\n", MSG_Q_UNINIT);
         return -1;
     }
     if (NULL == msg) {
@@ -126,9 +145,9 @@ int add_msg(struct msg_queue *msg_q, struct msg *msg) {
     msg_cpy->payload = strdup(msg->payload);
     msg_cpy->seq = msg->seq;
 
-    msg_q->msgs[msg_q->curr_msg] = msg_cpy;
+    msg_q->msgs[msg_q->next_msg] = msg_cpy;
     msg_q->curr_size += 1;
-    msg_q->curr_msg = (msg_q->curr_msg + 1) % msg_q->max_size;
+    msg_q->next_msg = (msg_q->next_msg + 1) % msg_q->max_size;
 
     return 0;
 }
@@ -136,35 +155,38 @@ int add_msg(struct msg_queue *msg_q, struct msg *msg) {
 /** 
  * Remove the specified message from the queue.
  * Return -1 if the request is invalid or if the message does not exist.
- * Otherwise, return 0.
+ * Otherwise, return the message sequence value of the removed message.
  */
-int _rmv_msg(struct msg_queue *msg_q, ack_t msg_ack) {
-    if (NULL == msg_q || NULL == msg_q->msgs) {
-        fprintf(stderr, "Message queue failed to properly initialize.\n");
+int _rmv_msg(struct msg_queue *msg_q, ack_t window_offset) {
+    ack_t msg_seq = 0;
+    if (NULL == msg_q->msgs[window_offset]) {
+        fprintf(stderr, "Msg from ACK %u does not exist.\n", window_offset);
+        return -1;
+    }
+    msg_seq = msg_q->msgs[window_offset]->seq;
+    free(msg_q->msgs[window_offset]->payload);
+    free(msg_q->msgs[window_offset]);
+    msg_q->msgs[window_offset] = NULL;
+    msg_q->curr_size -= 1;
+
+    return msg_seq;
+}
+
+/*
+ * Remove the oldest message from the queue.
+ * Returns the sequence value of the message which was removed, or -1 on
+ * failure.
+ */
+int rmv_msg(struct msg_queue *msg_q) {
+    if (MSG_Q_VAL(msg_q)) {
+        fprintf(stderr, "Error: rmv_msg: %s\n", MSG_Q_UNINIT);
         return -1;
     }
     if (0 == msg_q->curr_size) {
         fprintf(stderr, "Messages queue is empty.\n");
         return -1;
     }
-    if (msg_ack >= msg_q->max_size) {
-        fprintf(stderr, "ACK %u is greater than message queue maximum size.\n", msg_ack);
-        return -1;
-    }
-    if (NULL == msg_q->msgs[msg_ack]) {
-        fprintf(stderr, "Msg from ACK %u does not exist.\n", msg_ack);
-        return -1;
-    }
-    free(msg_q->msgs[msg_ack]->payload);
-    free(msg_q->msgs[msg_ack]);
-    msg_q->msgs[msg_ack] = NULL;
-    msg_q->curr_size -= 1;
-
-    return msg_ack;
-}
-
-int rmv_msg(struct msg_queue *msg_q) {
-    ack_t oldest = (msg_q->curr_msg - msg_q->curr_size + msg_q->max_size) % msg_q->max_size;
+    ack_t oldest = (msg_q->next_msg - msg_q->curr_size + msg_q->max_size) % msg_q->max_size;
     return _rmv_msg(msg_q, oldest);
 }
 
@@ -172,6 +194,10 @@ int rmv_msg(struct msg_queue *msg_q) {
  * Free all the messages in the message queue.
  */
 void free_msgs_q(struct msg_queue *msg_q) {
+    if (MSG_Q_VAL(msg_q)) {
+        fprintf(stderr, "Error: free_msgs_q: %s\n", MSG_Q_UNINIT);
+        return;
+    }
     for (uint32_t i = 0; i < msg_q->max_size; i++) {
         _rmv_msg(msg_q, i);
     }

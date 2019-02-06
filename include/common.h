@@ -29,7 +29,7 @@ struct msg_queue {
     // current size of the queue
     uint32_t curr_size; 
     // Index of the next available queue slot for a message.
-    uint32_t curr_msg; 
+    uint32_t next_msg; 
 };
 
 void print_msg(struct msg *msg);

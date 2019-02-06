@@ -145,7 +145,7 @@ void send_loop(int sockfd, char *port, struct addrinfo *p, uint32_t window_size)
             msg.seq = msg_seq;
             msg.payload = strdup(msg_buf);
             if (-1 == add_msg(&msg_q, &msg)) {
-                fprintf(stderr, "Failed to add message to buffer.");
+                fprintf(stderr, "Failed to add message to buffer.\n");
                 continue;
             }
     
