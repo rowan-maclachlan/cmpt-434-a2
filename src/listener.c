@@ -6,6 +6,7 @@
 
 #include <arpa/inet.h>
 #include <errno.h> 
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h> 
@@ -19,6 +20,51 @@
 
 #define MYPORT "8080"
 
+int _send_ack(ack_t ack, int sockfd, struct sockaddr_storage *their_addr, socklen_t their_addr_len) {
+    int numbytes = 0;
+    if (-1 == (numbytes =
+               sendto(sockfd, (void*)&ack, sizeof (ack_t), 0,
+               (struct sockaddr *)their_addr,
+               their_addr_len))) {
+        perror("listener: sendto");
+        exit(1);
+    }
+
+    return numbytes;
+}
+
+bool _msg_correct(struct msg *msg, ack_t ack) {
+    return msg->seq == ack;
+}
+
+/* TODO this should reflect true ack value limits. */
+bool _msg_retransmission(struct msg *msg, ack_t ack) {
+    return (msg->seq == (ack + 8 - 1) % 8);
+}
+
+bool _msg_uncorrupted() {
+    char *msg_buf;
+    size_t max = MAXLINE;
+    int num_bytes = 0;
+    if (NULL == (msg_buf = malloc(MAXLINE))) {
+        perror("listener: malloc:");
+        return false;
+    }
+    while(1 >= num_bytes) {
+        printf("Is this message uncorrupted? [Y/N]:\n");
+        num_bytes = getline(&msg_buf, &max, stdin); 
+        if (1 == num_bytes) {
+            fprintf(stderr, "Invalid input, try again:\n");
+        }
+        else if (1 > num_bytes) {
+            perror("Failed to read input in sender: get_line:");
+        }
+    }
+    bool ret = msg_buf[0] == 'Y' || msg_buf[0] == 'y';
+    free(msg_buf);
+    return ret; 
+}
+
 void listen_loop(int sockfd) {
     int numbytes = 0;
     char s[INET6_ADDRSTRLEN] = { 0 };
@@ -26,10 +72,12 @@ void listen_loop(int sockfd) {
     struct sockaddr_storage their_addr;
     socklen_t their_addr_len = 0;
     struct msg msg;
+    ack_t ack = 0; // This is the initial ack
 
     printf("listener: waiting to recvfrom...\n");
     their_addr_len = sizeof their_addr;
     while(1) {
+        bzero(msg_buf, MAXLINE);
         if (-1 == (numbytes = recvfrom(
                        sockfd, msg_buf, MAXLINE-1 , 0,
                        (struct sockaddr *)&their_addr,
@@ -38,23 +86,26 @@ void listen_loop(int sockfd) {
             exit(1);
         }
 
-        printf("listener: got packet from %s\n",
-                inet_ntop(their_addr.ss_family,
-                get_in_addr((struct sockaddr *)&their_addr), s, sizeof s));
+        printf("listener: got packet...\n");
 
         // put the first word of the msg_buf into ack
         deserialize_msg(msg_buf, &msg);
         
         print_msg(&msg);
-
-        if (-1 == (numbytes =
-                   sendto(sockfd, (void*)&(msg.seq), sizeof (ack_t), 0,
-                   (struct sockaddr *)&their_addr,
-                   their_addr_len))) {
-            perror("listener: sendto");
-            exit(1);
+        if (_msg_correct(&msg, ack)) { // msg has expected ack
+            if (_msg_uncorrupted()) {
+                _send_ack(msg.seq, sockfd, &their_addr, their_addr_len);
+                /* TODO the eight needs to reflect the actual maximum value of the ack_t */
+                ack = (ack + 1) % 8;
+            }
         }
-        printf("listener: sent ack %u to %s\n", msg.seq, s);
+        else if (_msg_retransmission(&msg, ack)) { // msg is a retransmission
+            _send_ack(msg.seq, sockfd, &their_addr, their_addr_len);
+            printf("listener: sent ack %u to %s\n", msg.seq, s);
+        }
+        else { // msg is out of order
+            fprintf(stderr, " ^^^ OUT OF ORDER ^^^\n");
+        }
     }
 }
 

@@ -13,6 +13,7 @@
 #include <string.h> 
 #include <sys/types.h> 
 #include <sys/socket.h> 
+#include <sys/select.h>
 #include <unistd.h>
 #include <netdb.h>
 #include <netinet/in.h>
@@ -22,6 +23,7 @@
 #define PORT_SIZE 16 
 #define IP_SIZE 64
 #define USAGE "Usage: %s <ip address> <port number> <timeout> <window size>"
+#define STDIN 0
 
 bool _parse_arg(const char *arg, const char *format, void *param) {
     if (0 >= sscanf(arg, format, param)) {
@@ -76,7 +78,6 @@ int _get_line(char *msg_buf) {
     size_t max = MAXLINE;
     int num_bytes = 0;
     while(1 >= num_bytes) {
-        printf("Enter input line for message:\n");
         num_bytes = getline(&msg_buf, &max, stdin); 
         if (1 >= num_bytes) {
             perror("Failed to read input in sender: get_line:");
@@ -117,51 +118,69 @@ void send_loop(int sockfd, char *port, struct addrinfo *p, uint32_t window_size)
     char msg_buf[MAXLINE] = { 0 };
     char *ser_msg;
     struct msg msg;
+    fd_set master_set;
+    fd_set tmp_set;
     ack_t ack;
 
     init_msg_q(&msg_q, window_size);
 
+    FD_ZERO(&master_set);
+    FD_ZERO(&tmp_set);
+    FD_SET(STDIN, &master_set);
+    FD_SET(sockfd, &master_set);
+
     ack_t msg_seq = 0;
     while(1) {
-        _get_line(msg_buf);
-        msg.seq = msg_seq;
-        msg.payload = strdup(msg_buf);
-        if (-1 == add_msg(&msg_q, &msg)) {
-            fprintf(stderr, "Failed to add message to buffer.");
-            continue;
-        }
-        free(msg.payload);
+        tmp_set = master_set;
 
-        if (NULL == (ser_msg = serialize_msg(&msg))) {
-            fprintf(stderr, "Failed to serialized message.\n");
+        printf("Enter input line for a message:\n");
+
+        if (-1 == (select(sockfd+1, &tmp_set, NULL, NULL, NULL))) {
+            perror("sender: select:");
             continue;
         }
 
-        if (-1 == (num_bytes = sendto(
-                        sockfd, ser_msg, strlen(msg_buf) + sizeof (ack_t), 0, p->ai_addr, p->ai_addrlen))) {
-            perror("sender: sendto");
-            fprintf(stderr, "Failed to send message to receiver.\n");
-            continue;
-        }
-        
-        printf("sender: sent %d bytes...\n", num_bytes);
-        
-        // After we send and add to the queue, consider that we are waiting for
-        // ACKs to previously sent messages.
+        if (FD_ISSET(STDIN, &tmp_set)) {
+            _get_line(msg_buf);
+            msg.seq = msg_seq;
+            msg.payload = strdup(msg_buf);
+            if (-1 == add_msg(&msg_q, &msg)) {
+                fprintf(stderr, "Failed to add message to buffer.");
+                continue;
+            }
     
-        addr_len = sizeof their_addr;
-        if (-1 == _get_ack(sockfd, &ack, &their_addr, &addr_len)) {
-            fprintf(stderr, "Failed to get ack.\n");
-            continue;
+            if (NULL == (ser_msg = serialize_msg(&msg))) {
+                fprintf(stderr, "Failed to serialized message.\n");
+                continue;
+            }
+            free(msg.payload);
+    
+            if (-1 == (num_bytes = sendto(
+                            sockfd, ser_msg, strlen(msg_buf) + sizeof (ack_t), 0, p->ai_addr, p->ai_addrlen))) {
+                free(ser_msg);
+                perror("sender: sendto");
+                fprintf(stderr, "Failed to send message to receiver.\n");
+                continue;
+            }
+            free(ser_msg);
+        
+            msg_seq = (msg_seq + 1) % msg_q.max_size;
+            
+            printf("sender: sent %d bytes...\n", num_bytes);
         }
-        printf("Got ack %u\n", ack);
-
-        if (-1 == rmv_msg(&msg_q)) {
-            fprintf(stderr, "Failed to remove message %u from message queue.\n", ack);
+        else if (FD_ISSET(sockfd, &tmp_set)) {
+            addr_len = sizeof their_addr;
+            if (-1 == _get_ack(sockfd, &ack, &their_addr, &addr_len)) {
+                fprintf(stderr, "Failed to get ack.\n");
+                continue;
+            }
+            printf("Got ack %u\n", ack);
+    
+            if (-1 == rmv_msg(&msg_q)) {
+                fprintf(stderr, "Failed to remove message %u from message queue.\n", ack);
+            }
+            printf("Removed message %u from buffer.\n", ack);
         }
-        printf("Removed message %u from buffer.\n", ack);
-
-        msg_seq = (msg_seq + 1) % msg_q.max_size;
     }
 }
 
