@@ -7,6 +7,7 @@
 #include <string.h>
 
 #include "common.h"
+#include "msg_queue.h"
 
 int _add_msg(struct msg_queue *msg_q, uint32_t seq) {
     int ret = 0;

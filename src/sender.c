@@ -19,6 +19,7 @@
 #include <netinet/in.h>
 
 #include "common.h"
+#include "msg_queue.h"
 
 #define PORT_SIZE 16 
 #define IP_SIZE 64

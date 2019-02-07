@@ -6,6 +6,7 @@
 
 #include <arpa/inet.h>
 #include <errno.h> 
+#include <limits.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -17,6 +18,7 @@
 #include <netinet/in.h>
 
 #include "common.h"
+#include "msg_queue.h"
 
 #define MYPORT "8080"
 
@@ -37,9 +39,8 @@ bool _msg_correct(struct msg *msg, ack_t ack) {
     return msg->seq == ack;
 }
 
-/* TODO this should reflect true ack value limits. */
 bool _msg_retransmission(struct msg *msg, ack_t ack) {
-    return (msg->seq == (ack + 8 - 1) % 8);
+    return (msg->seq == ((ack + sizeof(ack_t) * CHAR_BIT) - 1) % CHAR_BIT);
 }
 
 bool _msg_uncorrupted() {
@@ -95,8 +96,7 @@ void listen_loop(int sockfd) {
         if (_msg_correct(&msg, ack)) { // msg has expected ack
             if (_msg_uncorrupted()) {
                 _send_ack(msg.seq, sockfd, &their_addr, their_addr_len);
-                /* TODO the eight needs to reflect the actual maximum value of the ack_t */
-                ack = (ack + 1) % 8;
+                ack = (ack + 1) % (sizeof (ack_t) * CHAR_BIT);
             }
         }
         else if (_msg_retransmission(&msg, ack)) { // msg is a retransmission
