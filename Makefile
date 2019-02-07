@@ -76,7 +76,7 @@ $(TEST_OBJ) : $(SRC)test.c $(CMN_H) $(MSG_Q_OBJ)
 $(CMN_OBJ) : $(SRC)common.c $(CMN_H)
 	$(CC) $(INC_FLAGS) $(C_FLAGS) -c $< -o $@
 # MSG QUEUE OBJ FILES
-$(MSG_Q_OBJ) : $(SRC)msg_queue.c $(MSG_Q_OBJ)
+$(MSG_Q_OBJ) : $(SRC)msg_queue.c $(MSG_Q_H)
 	$(CC) $(INC_FLAGS) $(C_FLAGS) -c $< -o $@
 clean:
 	rm -f $(ALL_OBJ) 

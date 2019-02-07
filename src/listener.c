@@ -44,13 +44,9 @@ bool _msg_retransmission(struct msg *msg, ack_t ack) {
 }
 
 bool _msg_uncorrupted() {
-    char *msg_buf;
+    char msg_buf[64];
     size_t max = MAXLINE;
     int num_bytes = 0;
-    if (NULL == (msg_buf = malloc(MAXLINE))) {
-        perror("listener: malloc:");
-        return false;
-    }
     while(1 >= num_bytes) {
         printf("Is this message uncorrupted? [Y/N]:\n");
         num_bytes = getline(&msg_buf, &max, stdin); 
@@ -62,7 +58,6 @@ bool _msg_uncorrupted() {
         }
     }
     bool ret = msg_buf[0] == 'Y' || msg_buf[0] == 'y';
-    free(msg_buf);
     return ret; 
 }
 
@@ -100,6 +95,7 @@ void listen_loop(int sockfd) {
             }
         }
         else if (_msg_retransmission(&msg, ack)) { // msg is a retransmission
+            fprintf(stderr, " ^^^ RE-TRANSMISSION ^^^\n");
             _send_ack(msg.seq, sockfd, &their_addr, their_addr_len);
             printf("listener: sent ack %u to %s\n", msg.seq, s);
         }

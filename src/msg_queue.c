@@ -8,6 +8,7 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <errno.h>
+#include <limits.h>
 #include <string.h>
 #include <netdb.h>
 #include <inttypes.h>
@@ -188,6 +189,41 @@ int rmv_msg(struct msg_queue *msg_q) {
     }
     ack_t oldest = (msg_q->next_msg - msg_q->curr_size + msg_q->max_size) % msg_q->max_size;
     return _rmv_msg(msg_q, oldest);
+}
+
+int get_msg_cpy(struct msg_queue *msg_q, struct msg *return_msg, ack_t seq) {
+    struct msg *msg = NULL;
+    if (MSG_Q_VAL(msg_q)) {
+        fprintf(stderr, "Error: get_msg_cpy: %s\n", MSG_Q_UNINIT);
+        return -1;
+    }
+    if (NULL == msg) {
+        fprintf(stderr, "Error: get_msg_cpy: msg cannot be null\n");
+        return -1;
+    }
+    if (0 == msg_q->curr_size) {
+        fprintf(stderr, "Messages queue is empty.\n");
+        return -1;
+    }
+
+    ack_t oldest = (msg_q->next_msg - msg_q->curr_size + msg_q->max_size) % msg_q->max_size;
+    for (ack_t i = oldest; i < msg_q->curr_size + oldest; i++) {
+        // working forwards from the oldest - get progressively larger indices,
+        // but don't look at more messages than there are in the queue.
+        if (NULL == (msg = msg_q->msgs[i % ACKSIZE])) {
+            fprintf(stderr, "Error: get_msg_cpy: found NULL msg where I expected a message.\n");
+            return -1;
+        }
+        if (msg->seq == seq) { // This is the desired msg
+            return_msg->seq = msg->seq;
+            return_msg->payload = strdup(msg->payload);
+            return 0;
+        }
+    }
+
+    fprintf(stderr, "No such message with sequence number %u\n", seq);
+
+    return -1;
 }
 
 /*

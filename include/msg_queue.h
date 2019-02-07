@@ -11,6 +11,8 @@
 
 typedef uint32_t ack_t;
 
+#define ACKSIZE sizeof (ack_t) * CHAR_BIT
+
 struct msg {
     ack_t seq;
     char *payload;
@@ -42,3 +44,6 @@ int init_msg_q(struct msg_queue *msg_q, uint32_t window_size);
 int add_msg(struct msg_queue *msg_q, struct msg *msg);
 
 int rmv_msg(struct msg_queue *msg_q);
+
+/* Get a copy a message */
+int get_msg_cpy(struct msg_queue *msg_q, struct msg *msg, ack_t seq);
