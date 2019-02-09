@@ -13,6 +13,7 @@
 #include <string.h> 
 #include <sys/types.h> 
 #include <sys/socket.h> 
+#include <time.h> 
 #include <unistd.h>
 #include <netdb.h>
 #include <netinet/in.h>
@@ -21,9 +22,38 @@
 #include "msg_queue.h"
 
 #define MYPORT "8080"
+#define USAGE "Usage: %s <percent chance of loss> <r max>"
+
+uint32_t PROB_LOSS = 0;
+
+bool _init_args(int argc, char **argv, uint32_t *r_max) {
+    if (argc != 3) {
+        return false;
+    }
+    if (0 >= sscanf(argv[1], "%u", &PROB_LOSS)) {
+        fprintf(stderr, "Failed to parse %s.\n", argv[1]);
+        return false;
+    }
+    if (PROB_LOSS > 99) {
+        fprintf(stderr, "Invalid probability loss %s.\n", argv[1]);
+        return false;
+    }
+
+    if (0 >= sscanf(argv[2], "%u", r_max)) {
+        fprintf(stderr, "Failed to parse %s.\n", argv[2]);
+        return false;
+    }
+
+    return true;
+}
 
 int _send_ack(ack_t ack, int sockfd, struct sockaddr_storage *their_addr, socklen_t their_addr_len) {
     int numbytes = 0;
+
+    if ((rand() % 100) < PROB_LOSS) {
+        fprintf(stderr, "ACK lost...");
+        return numbytes;
+    }
     if (-1 == (numbytes =
                sendto(sockfd, (void*)&ack, sizeof (ack_t), 0,
                (struct sockaddr *)their_addr,
@@ -107,10 +137,22 @@ void listen_loop(int sockfd) {
     }
 }
 
-int main() {
+int main(int argc, char *argv[]) {
     int sockfd, status;
     struct addrinfo hints, *server_addr, *p;
-    
+    uint32_t r_max = 0;
+   
+    // initialize pseudo-random seed
+    srand(time(NULL));
+
+    if (!_init_args(argc, argv, &r_max)) {
+        fprintf(stderr, USAGE, argv[0]);
+        exit(EXIT_FAILURE);
+    }
+    else {
+        printf("Using loss probability of %u/100 r max of %u.\n", PROB_LOSS, r_max);
+    }
+ 
     memset(&hints, 0, sizeof hints);
     hints.ai_family = AF_UNSPEC; // set to AF_INET to force IPv4
     hints.ai_socktype = SOCK_DGRAM;
