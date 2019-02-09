@@ -1,3 +1,4 @@
+#include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/types.h>
@@ -108,6 +109,41 @@ int ser_des_msg(void) {
     return 0;
 }
 
+void get_msg_test(struct msg_queue *msg_q) {
+    struct msg msg;
+    free_msgs_q(msg_q);
+    assert(msg_q->curr_size == 0);
+
+    _add_msg(msg_q, 0);
+    _add_msg(msg_q, 1);
+    _add_msg(msg_q, 2);
+
+    assert(-1 != get_msg_cpy(msg_q, &msg, 2));
+    assert(msg.seq == 2);
+    free(msg.payload);
+    
+    rmv_msg(msg_q); // remove oldest message (seq # 0)
+    assert(-1 == get_msg_cpy(msg_q, &msg, 0));
+    assert(-1 != get_msg_cpy(msg_q, &msg, 1));
+    assert(msg.seq == 1);
+}
+
+void rmv_newest_test(struct msg_queue *msg_q) {
+    struct msg msg;
+    free_msgs_q(msg_q);
+    assert(msg_q->curr_size == 0);
+
+    _add_msg(msg_q, 0);
+    _add_msg(msg_q, 1);
+    _add_msg(msg_q, 2);
+    free(msg.payload);
+
+    assert(-1 != get_msg_cpy(msg_q, &msg, 2));
+    assert(2 == rmv_newest_msg(msg_q));
+    assert(1 == rmv_newest_msg(msg_q));
+    assert(0 == rmv_newest_msg(msg_q));
+}
+
 int main(void) {
     struct msg_queue msg_q;
 
@@ -155,7 +191,9 @@ int main(void) {
         exit(1);
     }
 
-    print_msgs(&msg_q);
+    get_msg_test(&msg_q);
+
+    rmv_newest_test(&msg_q);
 
     return 0;
 

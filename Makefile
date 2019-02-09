@@ -28,9 +28,9 @@ $(shell mkdir -p $(LST_DIR))
 $(shell mkdir -p $(SND_DIR))
 ########################################
 # Compiler and linker options
-CC = gcc
+CC = gcc 
 AR_OPTIONS = cr
-C_FLAGS = -Wall -pedantic -g
+C_FLAGS = -g -Wall -pedantic -g
 INC_FLAGS = -I$(INC)
 ########################################
 

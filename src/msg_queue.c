@@ -174,6 +174,27 @@ int _rmv_msg(struct msg_queue *msg_q, ack_t window_offset) {
 }
 
 /*
+ * Remove the newest message from the queue.
+ * Returns the sequence value of the message which was removed, or -1 on
+ * failure.
+ */
+int rmv_newest_msg(struct msg_queue *msg_q) {
+    if (MSG_Q_VAL(msg_q)) {
+        fprintf(stderr, "Error: rmv_msg: %s\n", MSG_Q_UNINIT);
+        return -1;
+    }
+    if (0 == msg_q->curr_size) {
+        fprintf(stderr, "Messages queue is empty.\n");
+        return -1;
+    }
+    ack_t newest = (msg_q->next_msg + msg_q->max_size - 1) % msg_q->max_size;
+    ack_t msg_seq = _rmv_msg(msg_q, newest);
+    msg_q->next_msg = newest;
+
+    return msg_seq;
+}
+
+/*
  * Remove the oldest message from the queue.
  * Returns the sequence value of the message which was removed, or -1 on
  * failure.
@@ -197,7 +218,7 @@ int get_msg_cpy(struct msg_queue *msg_q, struct msg *return_msg, ack_t seq) {
         fprintf(stderr, "Error: get_msg_cpy: %s\n", MSG_Q_UNINIT);
         return -1;
     }
-    if (NULL == msg) {
+    if (NULL == return_msg) {
         fprintf(stderr, "Error: get_msg_cpy: msg cannot be null\n");
         return -1;
     }
@@ -210,7 +231,7 @@ int get_msg_cpy(struct msg_queue *msg_q, struct msg *return_msg, ack_t seq) {
     for (ack_t i = oldest; i < msg_q->curr_size + oldest; i++) {
         // working forwards from the oldest - get progressively larger indices,
         // but don't look at more messages than there are in the queue.
-        if (NULL == (msg = msg_q->msgs[i % ACKSIZE])) {
+        if (NULL == (msg = msg_q->msgs[i % msg_q->max_size])) {
             fprintf(stderr, "Error: get_msg_cpy: found NULL msg where I expected a message.\n");
             return -1;
         }

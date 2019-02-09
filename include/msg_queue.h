@@ -9,9 +9,10 @@
 
 #define SEQ_BYTES 1
 
-typedef uint32_t ack_t;
+typedef uint8_t ack_t;
 
-#define ACKSIZE sizeof (ack_t) * CHAR_BIT
+// Max value of a sequence number...
+#define ACKSIZE 255 
 
 struct msg {
     ack_t seq;
@@ -42,6 +43,8 @@ void free_msgs_q(struct msg_queue *msg_q);
 int init_msg_q(struct msg_queue *msg_q, uint32_t window_size);
 
 int add_msg(struct msg_queue *msg_q, struct msg *msg);
+
+int rmv_newest_msg(struct msg_queue *msg_q);
 
 int rmv_msg(struct msg_queue *msg_q);
 

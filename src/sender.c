@@ -5,6 +5,7 @@
 // assignment 2
 
 #include <arpa/inet.h>
+#include <assert.h>
 #include <errno.h> 
 #include <limits.h>
 #include <stdbool.h>
@@ -14,6 +15,7 @@
 #include <sys/types.h> 
 #include <sys/socket.h> 
 #include <sys/select.h>
+#include <sys/time.h>
 #include <time.h>
 #include <unistd.h>
 #include <netdb.h>
@@ -28,7 +30,9 @@
 #define STDIN 0
 
 // Used to determine message timeouts
-time_t _TIMEOUT = 0;
+uint32_t _TIMEOUT = 0;
+
+struct timeval poll_freq = { 1, 0 };
 
 bool _parse_arg(const char *arg, const char *format, void *param) {
     if (0 >= sscanf(arg, format, param)) {
@@ -38,7 +42,7 @@ bool _parse_arg(const char *arg, const char *format, void *param) {
     return true;
 }
 
-bool _init_args(int argc, char **argv, char *ip_address, char *port, time_t *timeout, ack_t *window_size) {
+bool _init_args(int argc, char **argv, char *ip_address, char *port, uint32_t *timeout, ack_t *window_size) {
     ack_t max_window_size = 0;
 
     if (argc != 5) {
@@ -50,12 +54,13 @@ bool _init_args(int argc, char **argv, char *ip_address, char *port, time_t *tim
         return false;
     }
     ip_address[IP_SIZE-1] = '\0';
+
     if (!_parse_arg(argv[2], "%s", port)) {
         fprintf(stderr, "Invalid port.\n");
         return false;
     }
-
     port[PORT_SIZE-1] = '\0';
+
     if (!_parse_arg(argv[3], "%lu", timeout)) {
         fprintf(stderr, "Invalid timeout.\n");
         return false;
@@ -68,8 +73,6 @@ bool _init_args(int argc, char **argv, char *ip_address, char *port, time_t *tim
         fprintf(stderr, "Invalid window size.\n");
         return false;
     }
-    /* The max window size is the largest value we can fit in SEQ_BYTES bits.
-     * If shift left 1 that many times, we can subtract 1 to get the max window. */
     max_window_size = (ACKSIZE) - 1;
     if (*window_size > max_window_size) {
         fprintf(stderr, "Window size too large.\n");
@@ -115,7 +118,7 @@ int _get_ack(int sockfd, ack_t *ack, struct sockaddr_storage *their_addr, sockle
     return 0;
 }
 
-int _send_msg(struct msg *msg, int sockfd, struct addrinfo *p) {
+int _send_msg(struct msg *msg, int sockfd, struct sockaddr *p) {
     char *ser_msg = NULL;
     int num_bytes = 0;
 
@@ -124,8 +127,10 @@ int _send_msg(struct msg *msg, int sockfd, struct addrinfo *p) {
         return -1;
     }
 
-    if (-1 == (num_bytes = sendto(
-                    sockfd, ser_msg, strlen(msg->payload) + sizeof (ack_t), 0, p->ai_addr, p->ai_addrlen))) {
+    if (-1 == (num_bytes = sendto(sockfd,
+                                  ser_msg,
+                                  strlen(msg->payload) + sizeof (ack_t),
+                                  0, p, sizeof(*p)))) {
         free(ser_msg);
         perror("sender: sendto");
         fprintf(stderr, "Failed to send message to receiver.\n");
@@ -138,7 +143,25 @@ int _send_msg(struct msg *msg, int sockfd, struct addrinfo *p) {
     return num_bytes;
 }
 
-void send_loop(int sockfd, char *port, struct addrinfo *p, uint32_t window_size) {
+int _resend_msgs(ack_t expected_ack, struct msg_queue *msg_q, int sockfd, struct sockaddr *p) {
+    struct msg msg;
+    for (ack_t seq = expected_ack; seq < expected_ack + msg_q->curr_size; seq++) {
+        if (0 != get_msg_cpy(msg_q, &msg, seq)) {
+            fprintf(stderr, "ERROR Failed to get message %u.\n", seq);
+            return -1;
+        }
+        if (0 >= _send_msg(&msg, sockfd, p)) {
+            fprintf(stderr, "ERROR Failed to send message %u.\n", seq);
+            free(msg.payload);
+            return -1;
+        }
+        free(msg.payload);
+    }
+
+    return 0;
+}
+
+void send_loop(int sockfd, char *port, struct sockaddr *p, uint32_t window_size) {
     struct msg_queue msg_q;
     struct sockaddr_storage their_addr;
     socklen_t addr_len;
@@ -148,6 +171,7 @@ void send_loop(int sockfd, char *port, struct addrinfo *p, uint32_t window_size)
     fd_set tmp_set;
     ack_t ack = 0;
     time_t timeout = 0;
+    bool timeout_set = false;
 
     init_msg_q(&msg_q, window_size);
 
@@ -158,12 +182,11 @@ void send_loop(int sockfd, char *port, struct addrinfo *p, uint32_t window_size)
 
     ack_t expected_ack = 0; // Which ack are we timing out on?
     ack_t msg_seq = 0; // Which sequence number are we sending next?
+    printf("Enter input line for a message:\n");
     while(1) {
-        tmp_set = master_set;
+        FD_COPY(&master_set, &tmp_set);
 
-        printf("Enter input line for a message:\n");
-
-        if (-1 == (select(sockfd+1, &tmp_set, NULL, NULL, NULL))) {
+        if (-1 == (select(sockfd+1, &tmp_set, NULL, NULL, &poll_freq))) {
             perror("sender: select:");
             continue;
         }
@@ -173,12 +196,17 @@ void send_loop(int sockfd, char *port, struct addrinfo *p, uint32_t window_size)
             msg.seq = msg_seq;
             msg.payload = strdup(msg_buf);
             if (-1 == add_msg(&msg_q, &msg)) {
-                fprintf(stderr, "Failed to add message to buffer.\n");
+                fprintf(stderr, "Failed to add message %u to buffer.\n", msg_seq);
                 continue;
             }
     
             if (0 >= _send_msg(&msg, sockfd, p)) {
-                fprintf(stderr, "Failed to send message.\n");
+                fprintf(stderr, "Failed to send message %u.\n", msg_seq);
+                if (msg_seq != rmv_newest_msg(&msg_q)) {
+                    fprintf(stderr, "Failed to remove message %u from queue.\n", msg_seq);
+                    exit(1);
+                }
+
                 free(msg.payload);
                 continue;
             }
@@ -188,10 +216,10 @@ void send_loop(int sockfd, char *port, struct addrinfo *p, uint32_t window_size)
             // window, then we want to set the timeout for it
             if (msg_seq == expected_ack) {
                 timeout = time(NULL);
+                timeout_set = true;
             }
         
-            msg_seq = (msg_seq + 1) % msg_q.max_size;
-            
+            msg_seq++;
             
         }
         else if (FD_ISSET(sockfd, &tmp_set)) {
@@ -203,38 +231,39 @@ void send_loop(int sockfd, char *port, struct addrinfo *p, uint32_t window_size)
             printf("Got ack %u\n", ack);
     
             if (ack == expected_ack) {
-                expected_ack = (expected_ack + 1) % ACKSIZE;
+                expected_ack++;
                 // reset timeout
                 timeout = time(NULL);
                 printf("Received correct ack, resetting timeout.\n");
                 if (-1 == rmv_msg(&msg_q)) {
                     fprintf(stderr, "Failed to remove message %u from message queue.\n", ack);
                 }
+                // if there are other messages on the queue, 
+                // keep the timeout set for them
+                if (msg_q.curr_size > 0) {
+                    timeout_set = true;
+                }
+                // If there are no other messages on the queue,
+                // then we should not timeout for anything
+                else {
+                    timeout_set = false;
+                }
                 printf("Removed message %u from buffer.\n", ack);
             }
             else {
-                fprintf(stderr, "Out of order ack %u.\n", ack);
+                fprintf(stderr, "Out of order ack %u - expected %u.\n", ack, expected_ack);
             }
         }
 
         // if timeout expired,
         // The timeout expired if the current time minus the time the message
-        // was sent is greater than the timeout the user set.
-        if (_TIMEOUT < time(NULL) - timeout) {
+        // was sent is greater than the timeout the user requested.
+        if (timeout_set && (_TIMEOUT < (time(NULL) - timeout))) {
+            fprintf(stderr, "TIMEOUT\n");
             // resend full window.  Reset timer
             timeout = time(NULL);
-            struct msg msg;
-            for (int seq = expected_ack; seq < expected_ack + msg_q.curr_size; seq++) {
-                if (0 != get_msg_cpy(&msg_q, &msg, seq)) {
-                    fprintf(stderr, "ERROR Failed to get message %u.\n", seq);
-                    exit(1);
-                }
-                if (0 >= _send_msg(&msg, sockfd, p)) {
-                    fprintf(stderr, "ERROR Failed to send message %u.\n", seq);
-                    free(msg.payload);
-                    exit(1);
-                }
-                free(msg.payload);
+            if (-1 == _resend_msgs(expected_ack, &msg_q, sockfd, p)) {
+                fprintf(stderr, "Failed to resend all messages.\n");
             }
         }
     }
@@ -243,23 +272,19 @@ void send_loop(int sockfd, char *port, struct addrinfo *p, uint32_t window_size)
 int main(int argc, char **argv) {
     int sockfd, status;
     struct addrinfo hints, *servinfo, *p;
+    struct sockaddr dest;
     char port[PORT_SIZE] = { 0 };
     char ip_address[IP_SIZE] = { 0 };
-    time_t timeout = 0;
-    uint32_t window_size = 0;
-
+    ack_t window_size = 0;
     
-    if (!_init_args(argc, argv, ip_address, port, &timeout, &window_size)) {
+    if (!_init_args(argc, argv, ip_address, port, &_TIMEOUT, &window_size)) {
         fprintf(stderr, USAGE, argv[0]);
         exit(EXIT_FAILURE);
     }
     else {
-        printf("Using ip_address %s and port %s, timeout %lu and window size %d.\n",
-               ip_address, port, timeout, window_size);
+        printf("Using ip_address %s and port %s, timeout %u and window size %u.\n",
+               ip_address, port, _TIMEOUT, window_size);
     }
-
-    // set timeout value as global
-    _TIMEOUT = timeout;
 
     memset(&hints, 0, sizeof hints);
     hints.ai_family = AF_UNSPEC;
@@ -282,10 +307,12 @@ int main(int argc, char **argv) {
         fprintf(stderr, "sender: failed to create socket\n");
         return 2;
     }
+
+    memcpy(&dest, p->ai_addr, sizeof(*p->ai_addr));
     free(servinfo);
 
     printf("sender: sending messages to %s\n", ip_address);
-    send_loop(sockfd, port, p, window_size);
+    send_loop(sockfd, port, &dest, window_size);
 
     close(sockfd);
     

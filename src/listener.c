@@ -40,13 +40,14 @@ bool _msg_correct(struct msg *msg, ack_t ack) {
 }
 
 bool _msg_retransmission(struct msg *msg, ack_t ack) {
-    return (msg->seq == ((ack + sizeof(ack_t) * CHAR_BIT) - 1) % CHAR_BIT);
+    return (msg->seq == ack - 1);
 }
 
 bool _msg_uncorrupted() {
-    char msg_buf[64];
+    char *msg_buf = NULL;
     size_t max = MAXLINE;
     int num_bytes = 0;
+    msg_buf = malloc(MAXLINE);
     while(1 >= num_bytes) {
         printf("Is this message uncorrupted? [Y/N]:\n");
         num_bytes = getline(&msg_buf, &max, stdin); 
@@ -58,12 +59,12 @@ bool _msg_uncorrupted() {
         }
     }
     bool ret = msg_buf[0] == 'Y' || msg_buf[0] == 'y';
+    free(msg_buf);
     return ret; 
 }
 
 void listen_loop(int sockfd) {
     int numbytes = 0;
-    char s[INET6_ADDRSTRLEN] = { 0 };
     char msg_buf[MAXLINE] = { 0 };
     struct sockaddr_storage their_addr;
     socklen_t their_addr_len = 0;
@@ -91,13 +92,14 @@ void listen_loop(int sockfd) {
         if (_msg_correct(&msg, ack)) { // msg has expected ack
             if (_msg_uncorrupted()) {
                 _send_ack(msg.seq, sockfd, &their_addr, their_addr_len);
-                ack = (ack + 1) % (sizeof (ack_t) * CHAR_BIT);
+                printf("listener: sent ack %u\n", msg.seq);
+                ack++;
             }
         }
         else if (_msg_retransmission(&msg, ack)) { // msg is a retransmission
             fprintf(stderr, " ^^^ RE-TRANSMISSION ^^^\n");
             _send_ack(msg.seq, sockfd, &their_addr, their_addr_len);
-            printf("listener: sent ack %u to %s\n", msg.seq, s);
+            printf("listener: sent ack %u\n", msg.seq);
         }
         else { // msg is out of order
             fprintf(stderr, " ^^^ OUT OF ORDER ^^^\n");
