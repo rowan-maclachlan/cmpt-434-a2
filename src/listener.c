@@ -51,7 +51,7 @@ int _send_ack(ack_t ack, int sockfd, struct sockaddr_storage *their_addr, sockle
     int numbytes = 0;
 
     if ((rand() % 100) < PROB_LOSS) {
-        fprintf(stderr, "ACK lost...");
+        fprintf(stderr, "ACK lost...\n");
         return numbytes;
     }
     if (-1 == (numbytes =
