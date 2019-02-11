@@ -21,15 +21,6 @@
 
 #include "common.h"
 
-bool timedout(time_t timeout) {
-    return true;
-}
-
-/* Set timeout to the current time in seconds. */
-void set_timeout(time_t *timeout) {
-    *timeout = time(NULL);
-}
-
 /**
  * From Beej's Networking guide.
  */

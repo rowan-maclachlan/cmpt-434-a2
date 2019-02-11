@@ -144,6 +144,49 @@ void rmv_newest_test(struct msg_queue *msg_q) {
     assert(0 == rmv_newest_msg(msg_q));
 }
 
+void rmv_msgs_test(struct msg_queue *msg_q) {
+    struct msg msg;
+    assert(msg_q->curr_size == 0);
+
+    _add_msg(msg_q, 0);
+    _add_msg(msg_q, 1);
+    _add_msg(msg_q, 2);
+
+    assert(2 == rmv_msgs(msg_q, 2));
+    assert(msg_q->curr_size = 1);
+    assert(0 == get_msg_cpy(msg_q, &msg, 2));
+    assert(msg.seq == 2);
+    
+    _add_msg(msg_q, 3);
+    _add_msg(msg_q, 4);
+    _add_msg(msg_q, 5);
+    
+    assert(3 == rmv_msgs(msg_q, 5));
+    assert(msg_q->curr_size = 1);
+    assert(0 == get_msg_cpy(msg_q, &msg, 5));
+    assert(msg.seq == 5);
+
+    free_msgs_q(msg_q);
+}
+
+void get_earliest_test(struct msg_queue *msg_q) {
+    ack_t ack = 0;
+    free_msgs_q(msg_q);
+    assert(msg_q->curr_size == 0);
+
+    _add_msg(msg_q, 1);
+    _add_msg(msg_q, 2);
+
+    assert(3 == get_earliest_unrcvd(msg_q, ack));
+
+    _add_msg(msg_q, 3);
+    _add_msg(msg_q, 4);
+
+    assert(5 == get_earliest_unrcvd(msg_q, ack));
+
+    free_msgs_q(msg_q);
+}
+
 int main(void) {
     struct msg_queue msg_q;
 
@@ -194,6 +237,10 @@ int main(void) {
     get_msg_test(&msg_q);
 
     rmv_newest_test(&msg_q);
+
+    rmv_msgs_test(&msg_q);
+
+    get_earliest_test(&msg_q);
 
     return 0;
 

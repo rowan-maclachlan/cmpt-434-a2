@@ -43,6 +43,9 @@ void print_msgs(struct msg_queue *msg_q) {
         if (msg_q->msgs[i] != NULL) {
             print_msg(msg_q->msgs[i]);
         }
+        else {
+            printf(" # - #\n");
+        }
     }
 }
 
@@ -210,6 +213,63 @@ int rmv_msg(struct msg_queue *msg_q) {
     }
     ack_t oldest = (msg_q->next_msg - msg_q->curr_size + msg_q->max_size) % msg_q->max_size;
     return _rmv_msg(msg_q, oldest);
+}
+
+ack_t get_earliest_unrcvd(struct msg_queue *msg_q, ack_t ack) {
+    struct msg *msg;
+
+    ack_t oldest_i = (msg_q->next_msg - msg_q->curr_size + msg_q->max_size) % msg_q->max_size;
+    for (ack_t i = oldest_i; i < msg_q->curr_size + msg_q->max_size; i++) {
+        int index = i % msg_q->max_size;
+        if (NULL == (msg = msg_q->msgs[index])) {
+            return ack + 1;
+        }
+        if (msg_q->msgs[index]->seq != ack + 1) {
+            // then they are not in sequence, so ack+1 is the earliest
+            // unreceived sequence number.
+            return ack + 1;
+        }
+        ack++;
+    }
+
+    // If we never found an out of order value, then 
+    return ack;
+}
+
+/*
+ * Remove all messages with sequence values less that ack.
+ * Returns the number of messages removed from the queue, or -1 on failure. 
+ */
+int rmv_msgs(struct msg_queue *msg_q, ack_t ack) {
+    if (MSG_Q_VAL(msg_q)) {
+        fprintf(stderr, "Error: rmv_msg: %s\n", MSG_Q_UNINIT);
+        return -1;
+    }
+    if (0 == msg_q->curr_size) {
+        fprintf(stderr, "Messages queue is empty.\n");
+        return 0;
+    }
+    ack_t oldest = (msg_q->next_msg + msg_q->max_size - msg_q->curr_size) % msg_q->max_size;
+
+    int num_msgs = 0;
+    int orig_size = msg_q->curr_size;
+    for (int i = oldest; i < oldest + orig_size; i++) {
+        int index = i % msg_q->max_size;
+        if (NULL == msg_q->msgs[index]) {
+            fprintf(stderr, "Message at index %d is NULL!\n", index);
+        }
+        if (msg_q->msgs[index]->seq < ack) {
+            if (-1 == _rmv_msg(msg_q, index)) {
+                fprintf(stderr, "Failed to remove message with index %u.\n", index);
+            }
+            else {
+                num_msgs++;
+            }
+        }
+
+    }
+
+    return num_msgs;
 }
 
 int get_msg_cpy(struct msg_queue *msg_q, struct msg *return_msg, ack_t seq) {
