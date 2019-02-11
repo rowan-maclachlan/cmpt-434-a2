@@ -93,13 +93,18 @@ bool _msg_uncorrupted() {
     return ret; 
 }
 
-void listen_loop(int sockfd) {
+void listen_loop(int sockfd, uint32_t r_max) {
     int numbytes = 0;
     char msg_buf[MAXLINE] = { 0 };
     struct sockaddr_storage their_addr;
     socklen_t their_addr_len = 0;
     struct msg msg;
-    ack_t ack = 0; // This is the initial ack
+    ack_t earliest_ack = 0; // This is the initial ack
+    struct msg_queue msg_q; // to buffer the received messages
+
+    if (-1 == init_msg_q(&msg_q, r_max)) {
+        exit(EXIT_FAILURE);
+    }
 
     printf("listener: waiting to recvfrom...\n");
     their_addr_len = sizeof their_addr;
@@ -115,25 +120,45 @@ void listen_loop(int sockfd) {
 
         printf("listener: got packet...\n");
 
-        // put the first word of the msg_buf into ack
         deserialize_msg(msg_buf, &msg);
         
         print_msg(&msg);
-        if (_msg_correct(&msg, ack)) { // msg has expected ack
+        if (_msg_correct(&msg, earliest_ack)) { // msg has expected ack
             if (_msg_uncorrupted()) {
-                _send_ack(msg.seq, sockfd, &their_addr, their_addr_len);
-                printf("listener: sent ack %u\n", msg.seq);
-                ack++;
+                // The ack we send here should reflect the sequence number of
+                // the earliest message we have not yet received.  This means
+                // looking through the messages we have buffered.  All messages
+                // in sequence should be deleted from the queue.
+                earliest_ack = get_earliest_unrcvd(&msg_q, earliest_ack);
+                // Remove all message up to but not including 'earliest ack'
+                if (-1 == rmv_msgs(&msg_q, earliest_ack)) {
+                    fprintf(stderr, "Failed to remove buffered messages.\n");
+                }
+                // send the next expected message.
+                _send_ack(earliest_ack, sockfd, &their_addr, their_addr_len);
+                printf("listener: sent ack %u\n", earliest_ack);
             }
         }
-        else if (_msg_retransmission(&msg, ack)) { // msg is a retransmission
+        else if (_msg_retransmission(&msg, earliest_ack)) { // msg is a retransmission
+            // If the message is a retransmission, we should still send the
+            // sequence number of the earliest message we have not yet received.
             fprintf(stderr, " ^^^ RE-TRANSMISSION ^^^\n");
-            _send_ack(msg.seq, sockfd, &their_addr, their_addr_len);
+            _send_ack(earliest_ack, sockfd, &their_addr, their_addr_len);
             printf("listener: sent ack %u\n", msg.seq);
         }
         else { // msg is out of order
+            // The message is out of order, so it should be buffered in the
+            // message queue.  If the queue is full, then it must be dropped.
+            // If the sequence number of the message is greater than the value
+            // of the earliest message we have not yet received by a difference
+            // of r_max, then we cannot buffer the message, because the queue is
+            // full.
             fprintf(stderr, " ^^^ OUT OF ORDER ^^^\n");
+            if (-1 == add_msg(&msg_q, &msg)) {
+                fprintf(stderr, "Failed to buffer message %u.\n", msg.seq);
+            }
         }
+        free(msg.payload);
     }
 }
 
@@ -186,7 +211,7 @@ int main(int argc, char *argv[]) {
     get_ip_str(p->ai_addr, ip, INET6_ADDRSTRLEN);
     printf("Listening from IP address %s and on port %s.\n", ip, MYPORT);
 
-    listen_loop(sockfd);
+    listen_loop(sockfd, r_max);
 
     close(sockfd);
     

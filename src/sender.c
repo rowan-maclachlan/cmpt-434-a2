@@ -143,18 +143,22 @@ int _send_msg(struct msg *msg, int sockfd, struct sockaddr *p) {
     return num_bytes;
 }
 
+int _resend_msg(struct msg_queue *msg_q, struct msg *msg, ack_t seq, int sockfd, struct sockaddr *p) {
+    if (0 != get_msg_cpy(msg_q, msg, seq)) {
+        fprintf(stderr, "ERROR Failed to get message %u.\n", seq);
+        return -1;
+    }
+    if (0 >= _send_msg(msg, sockfd, p)) {
+        fprintf(stderr, "ERROR Failed to send message %u.\n", seq);
+        return -1;
+    }
+    return 0;
+}
+
 int _resend_msgs(ack_t expected_ack, struct msg_queue *msg_q, int sockfd, struct sockaddr *p) {
     struct msg msg;
     for (ack_t seq = expected_ack; seq < expected_ack + msg_q->curr_size; seq++) {
-        if (0 != get_msg_cpy(msg_q, &msg, seq)) {
-            fprintf(stderr, "ERROR Failed to get message %u.\n", seq);
-            return -1;
-        }
-        if (0 >= _send_msg(&msg, sockfd, p)) {
-            fprintf(stderr, "ERROR Failed to send message %u.\n", seq);
-            free(msg.payload);
-            return -1;
-        }
+        _resend_msg(msg_q, &msg, seq, sockfd, p);
         free(msg.payload);
     }
 
@@ -169,7 +173,7 @@ void send_loop(int sockfd, char *port, struct sockaddr *p, uint32_t window_size)
     struct msg msg;
     fd_set master_set;
     fd_set tmp_set;
-    ack_t ack = 0;
+    int ret_val = 0;
     time_t timeout = 0;
     bool timeout_set = false;
 
@@ -180,7 +184,12 @@ void send_loop(int sockfd, char *port, struct sockaddr *p, uint32_t window_size)
     FD_SET(STDIN, &master_set);
     FD_SET(sockfd, &master_set);
 
-    ack_t expected_ack = 0; // Which ack are we timing out on?
+    // The ack we are timing out on depends on the ack sent by the receiver.
+    // That value will be the next sequence number they are expecting to
+    // receive.  Is the ack we are timing out on simply 1 less than the received
+    // ack?
+    ack_t rcvd_ack = 0;
+    ack_t timeout_ack = 0; // Which ack are we timing out on?
     ack_t msg_seq = 0; // Which sequence number are we sending next?
     printf("Enter input line for a message:\n");
     while(1) {
@@ -214,7 +223,8 @@ void send_loop(int sockfd, char *port, struct sockaddr *p, uint32_t window_size)
             
             // We successfully sent a message.  If its the first frame of our
             // window, then we want to set the timeout for it
-            if (msg_seq == expected_ack) {
+            if (msg_seq == timeout_ack) {
+                printf("New message, setting timeout.\n");
                 timeout = time(NULL);
                 timeout_set = true;
             }
@@ -224,34 +234,42 @@ void send_loop(int sockfd, char *port, struct sockaddr *p, uint32_t window_size)
         }
         else if (FD_ISSET(sockfd, &tmp_set)) {
             addr_len = sizeof their_addr;
-            if (-1 == _get_ack(sockfd, &ack, &their_addr, &addr_len)) {
+            if (-1 == _get_ack(sockfd, &rcvd_ack, &their_addr, &addr_len)) {
                 fprintf(stderr, "Failed to get ack.\n");
                 continue;
             }
-            printf("Got ack %u\n", ack);
+            printf("Got ack %u\n", rcvd_ack);
     
-            if (ack == expected_ack) {
-                expected_ack++;
+            // If the ack we received is greater than the timeout ack,
+            // then we can reset the timer.  Then, the timeout ack becomes the
+            // value of the last received ack.
+            if (rcvd_ack > timeout_ack) {
+                timeout_ack = rcvd_ack;
                 // reset timeout
                 timeout = time(NULL);
                 printf("Received correct ack, resetting timeout.\n");
-                if (-1 == rmv_msg(&msg_q)) {
-                    fprintf(stderr, "Failed to remove message %u from message queue.\n", ack);
+                // remove all messages with sequence values less than (not
+                // quite) the received ack.
+                if (-1 == (ret_val = rmv_msgs(&msg_q, rcvd_ack))) {
+                    fprintf(stderr, 
+                            "Failed to remove all acked messages from queue.\n");
                 }
                 // if there are other messages on the queue, 
                 // keep the timeout set for them
                 if (msg_q.curr_size > 0) {
+                    printf("More messages in the buffer, setting timeout...\n");
                     timeout_set = true;
                 }
                 // If there are no other messages on the queue,
                 // then we should not timeout for anything
                 else {
+                    printf("No more messages in the buffer, unsetting timeout.\n");
                     timeout_set = false;
                 }
-                printf("Removed message %u from buffer.\n", ack);
+                printf("Removed message %d from buffer.\n", ret_val);
             }
             else {
-                fprintf(stderr, "Out of order ack %u - expected %u.\n", ack, expected_ack);
+                fprintf(stderr, "Out of order ack %u - expected %u.\n", rcvd_ack, timeout_ack);
             }
         }
 
@@ -262,8 +280,9 @@ void send_loop(int sockfd, char *port, struct sockaddr *p, uint32_t window_size)
             fprintf(stderr, "TIMEOUT\n");
             // resend full window.  Reset timer
             timeout = time(NULL);
-            if (-1 == _resend_msgs(expected_ack, &msg_q, sockfd, p)) {
-                fprintf(stderr, "Failed to resend all messages.\n");
+            // In go-back-n, I only want to resend messages selectively
+            if (-1 == _resend_msg(&msg_q, &msg, timeout_ack, sockfd, p)) {
+                fprintf(stderr, "Failed to resend message %u.\n", timeout_ack);
             }
         }
     }

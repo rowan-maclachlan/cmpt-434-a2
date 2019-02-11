@@ -44,6 +44,10 @@ int init_msg_q(struct msg_queue *msg_q, uint32_t window_size);
 
 int add_msg(struct msg_queue *msg_q, struct msg *msg);
 
+ack_t get_earliest_unrcvd(struct msg_queue *msg_q, ack_t ack);
+
+int rmv_msgs(struct msg_queue *msg_q, ack_t ack);
+
 int rmv_newest_msg(struct msg_queue *msg_q);
 
 int rmv_msg(struct msg_queue *msg_q);
