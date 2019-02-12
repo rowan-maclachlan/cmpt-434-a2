@@ -6,14 +6,14 @@
 
 #include <arpa/inet.h>
 #include <assert.h>
-#include <errno.h> 
+#include <errno.h>
 #include <limits.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <string.h> 
-#include <sys/types.h> 
-#include <sys/socket.h> 
+#include <string.h>
+#include <sys/types.h>
+#include <sys/socket.h>
 #include <sys/select.h>
 #include <sys/time.h>
 #include <time.h>
@@ -24,7 +24,7 @@
 #include "common.h"
 #include "msg_queue.h"
 
-#define PORT_SIZE 16 
+#define PORT_SIZE 16
 #define IP_SIZE 64
 #define USAGE "Usage: %s <ip address> <port number> <timeout> <window size>"
 #define STDIN 0
@@ -86,14 +86,14 @@ int _get_line(char *msg_buf) {
     size_t max = MAXLINE;
     int num_bytes = 0;
     while(1 >= num_bytes) {
-        num_bytes = getline(&msg_buf, &max, stdin); 
+        num_bytes = getline(&msg_buf, &max, stdin);
         if (1 >= num_bytes) {
             perror("Failed to read input in sender: get_line:");
         }
     }
 
     printf("sender: read input of %d bytes...\n", num_bytes);
-    
+
     /* Overrite the newline character. */
     msg_buf[strcspn(msg_buf, "\n")] = '\0';
 
@@ -104,7 +104,7 @@ int _get_ack(int sockfd, ack_t *ack, struct sockaddr_storage *their_addr, sockle
     int num_bytes;
 
     if (-1 == (num_bytes = recvfrom(
-                    sockfd, (void*) ack, sizeof (ack_t) , 0, 
+                    sockfd, (void*) ack, sizeof (ack_t) , 0,
                     (struct sockaddr *)their_addr, addr_len))) {
         perror("recvfrom");
         return -1;
@@ -184,7 +184,7 @@ void send_loop(int sockfd, char *port, struct sockaddr *p, uint32_t window_size)
     ack_t msg_seq = 0; // Which sequence number are we sending next?
     printf("Enter input line for a message:\n");
     while(1) {
-        FD_COPY(&master_set, &tmp_set);
+        tmp_set = master_set;
 
         if (-1 == (select(sockfd+1, &tmp_set, NULL, NULL, &poll_freq))) {
             perror("sender: select:");
@@ -199,7 +199,7 @@ void send_loop(int sockfd, char *port, struct sockaddr *p, uint32_t window_size)
                 fprintf(stderr, "Failed to add message %u to buffer.\n", msg_seq);
                 continue;
             }
-    
+
             if (0 >= _send_msg(&msg, sockfd, p)) {
                 fprintf(stderr, "Failed to send message %u.\n", msg_seq);
                 if (msg_seq != rmv_newest_msg(&msg_q)) {
@@ -211,16 +211,16 @@ void send_loop(int sockfd, char *port, struct sockaddr *p, uint32_t window_size)
                 continue;
             }
             free(msg.payload);
-            
+
             // We successfully sent a message.  If its the first frame of our
             // window, then we want to set the timeout for it
             if (msg_seq == expected_ack) {
                 timeout = time(NULL);
                 timeout_set = true;
             }
-        
+
             msg_seq++;
-            
+
         }
         else if (FD_ISSET(sockfd, &tmp_set)) {
             addr_len = sizeof their_addr;
@@ -229,7 +229,7 @@ void send_loop(int sockfd, char *port, struct sockaddr *p, uint32_t window_size)
                 continue;
             }
             printf("Got ack %u\n", ack);
-    
+
             if (ack == expected_ack) {
                 expected_ack++;
                 // reset timeout
@@ -238,7 +238,7 @@ void send_loop(int sockfd, char *port, struct sockaddr *p, uint32_t window_size)
                 if (-1 == rmv_msg(&msg_q)) {
                     fprintf(stderr, "Failed to remove message %u from message queue.\n", ack);
                 }
-                // if there are other messages on the queue, 
+                // if there are other messages on the queue,
                 // keep the timeout set for them
                 if (msg_q.curr_size > 0) {
                     timeout_set = true;
@@ -276,7 +276,7 @@ int main(int argc, char **argv) {
     char port[PORT_SIZE] = { 0 };
     char ip_address[IP_SIZE] = { 0 };
     ack_t window_size = 0;
-    
+
     if (!_init_args(argc, argv, ip_address, port, &_TIMEOUT, &window_size)) {
         fprintf(stderr, USAGE, argv[0]);
         exit(EXIT_FAILURE);
@@ -299,9 +299,9 @@ int main(int argc, char **argv) {
         if ((sockfd = socket(p->ai_family, p->ai_socktype,
                 p->ai_protocol)) == -1) {
             perror("sender: socket");
-            continue; 
+            continue;
         }
-        break; 
+        break;
     }
     if (p == NULL) {
         fprintf(stderr, "sender: failed to create socket\n");
@@ -315,6 +315,6 @@ int main(int argc, char **argv) {
     send_loop(sockfd, port, &dest, window_size);
 
     close(sockfd);
-    
+
     exit(EXIT_SUCCESS);
 }
