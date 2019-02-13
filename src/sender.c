@@ -239,7 +239,6 @@ void send_loop(int sockfd, char *port, struct sockaddr *p, uint32_t window_size)
                 continue;
             }
             printf("Got ack %u\n", rcvd_ack);
-
             // If the ack we received is greater than the timeout ack,
             // then we can reset the timer.  Then, the timeout ack becomes the
             // value of the last received ack.
