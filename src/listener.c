@@ -21,7 +21,7 @@
 #include "common.h"
 #include "msg_queue.h"
 
-#define MYPORT "8080"
+#define MYPORT "32000"
 #define USAGE "Usage: %s <percent chance of loss> <r max>"
 
 uint32_t PROB_LOSS = 0;

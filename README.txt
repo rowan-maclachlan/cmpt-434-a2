@@ -54,9 +54,11 @@ TESTING
     should be the same size as that given to the sender.
 
     `./go-back-n-sender <ip> <port-number> 10 8` to run the sender program
-    with an 10 second timeout and a window size of 8.
+    with an 10 second timeout and a window size of 8.  The port number used by
+    the listener is 32000, and the ip given to the sender should be the hostname of the
+    listener.
 
-    The selective-repeat programs are run similarily
+    The selective-repeat programs are run similarily.
     
 LIMITATIONS
     Individual messages do not have specific timeout constructs associated with
