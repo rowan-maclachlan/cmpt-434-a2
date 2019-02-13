@@ -121,7 +121,7 @@ void get_msg_test(struct msg_queue *msg_q) {
     assert(-1 != get_msg_cpy(msg_q, &msg, 2));
     assert(msg.seq == 2);
     free(msg.payload);
-    
+
     rmv_msg(msg_q); // remove oldest message (seq # 0)
     assert(-1 == get_msg_cpy(msg_q, &msg, 0));
     assert(-1 != get_msg_cpy(msg_q, &msg, 1));
@@ -153,16 +153,16 @@ void rmv_msgs_test(struct msg_queue *msg_q) {
     _add_msg(msg_q, 2);
 
     assert(2 == rmv_msgs(msg_q, 2));
-    assert(msg_q->curr_size = 1);
+    assert(msg_q->curr_size == 1);
     assert(0 == get_msg_cpy(msg_q, &msg, 2));
     assert(msg.seq == 2);
-    
+
     _add_msg(msg_q, 3);
     _add_msg(msg_q, 4);
     _add_msg(msg_q, 5);
-    
+
     assert(3 == rmv_msgs(msg_q, 5));
-    assert(msg_q->curr_size = 1);
+    assert(msg_q->curr_size == 1);
     assert(0 == get_msg_cpy(msg_q, &msg, 5));
     assert(msg.seq == 5);
 
