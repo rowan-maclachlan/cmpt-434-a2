@@ -42,24 +42,13 @@ bool _parse_arg(const char *arg, const char *format, void *param) {
     return true;
 }
 
-bool _init_args(int argc, char **argv, char *ip_address, char *port, uint32_t *timeout, ack_t *window_size) {
+bool _init_args(int argc, char **argv, uint32_t *timeout, ack_t *window_size) {
     ack_t max_window_size = 0;
 
     if (argc != 5) {
         fprintf(stderr, USAGE, argv[0]);
         return false;
     }
-    if (!_parse_arg(argv[1], "%s", ip_address)) {
-        fprintf(stderr, "Invalid IP.\n");
-        return false;
-    }
-    ip_address[IP_SIZE-1] = '\0';
-
-    if (!_parse_arg(argv[2], "%s", port)) {
-        fprintf(stderr, "Invalid port.\n");
-        return false;
-    }
-    port[PORT_SIZE-1] = '\0';
 
     if (!_parse_arg(argv[3], "%lu", timeout)) {
         fprintf(stderr, "Invalid timeout.\n");
@@ -295,11 +284,13 @@ int main(int argc, char **argv) {
     char ip_address[IP_SIZE] = { 0 };
     ack_t window_size = 0;
 
-    if (!_init_args(argc, argv, ip_address, port, &_TIMEOUT, &window_size)) {
+    if (!_init_args(argc, argv, &_TIMEOUT, &window_size)) {
         fprintf(stderr, USAGE, argv[0]);
         exit(EXIT_FAILURE);
     }
     else {
+        strcpy(ip_address, argv[1]);
+        strcpy(port, argv[2]);
         printf("Using ip_address %s and port %s, timeout %u and window size %u.\n",
                ip_address, port, _TIMEOUT, window_size);
     }
