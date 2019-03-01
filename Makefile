@@ -15,7 +15,11 @@ ARCH := $(shell uname -m)
 MAC_OS="Darwin"
 LINUX_OS="Linux"
 ########################################
-TARGET = listener sender test
+TARGET = listener-go-back-n \
+		 sender-go-back-n \
+		 listener-selective-repeat \
+		 sender-selective-repeat \
+		 test
 ########################################
 # Directories
 OBJ = ./obj/
@@ -36,8 +40,8 @@ INC_FLAGS = -I$(INC)
 
 # Filename macroes
 # server 
-LST_OBJ = $(OBJ)listener.o 
-SND_OBJ = $(OBJ)sender.o 
+LST_OBJ = $(OBJ)listener-go-back-n.o $(OBJ)listener-selective-repeat.o 
+SND_OBJ = $(OBJ)sender-go-back-n.o $(OBJ)sender-selective-repeat.o 
 CMN_H = $(INC)common.h
 CMN_OBJ = $(OBJ)common.o
 MSG_Q_H = $(INC)msg_queue.h
@@ -53,21 +57,29 @@ EXEC = $(LST_DIR)listener $(SND_DIR)sender
 
 all: $(TARGET)
 
-# SERVER 
-listener : $(LST_OBJ) $(CMN_OBJ) $(MSG_Q_OBJ)
+# LISTENER 
+listener-go-back-n : $(OBJ)listener-go-back-n.o $(CMN_OBJ) $(MSG_Q_OBJ)
 	$(CC) $^ -o $(LST_DIR)$@ 
-# CLIENT
-sender : $(SND_OBJ) $(CMN_OBJ) $(MSG_Q_OBJ)
+listener-selective-repeat : $(OBJ)listener-selective-repeat.o $(CMN_OBJ) $(MSG_Q_OBJ)
+	$(CC) $^ -o $(LST_DIR)$@ 
+# SENDER 
+sender-go-back-n : $(OBJ)sender-go-back-n.o $(CMN_OBJ) $(MSG_Q_OBJ)
+	$(CC) $^ -o $(SND_DIR)$@ 
+sender-selective-repeat : $(OBJ)sender-selective-repeat.o $(CMN_OBJ) $(MSG_Q_OBJ)
 	$(CC) $^ -o $(SND_DIR)$@ 
 # TEST
 test : $(TEST_OBJ) $(CMN_OBJ) $(MSG_Q_OBJ)
 	$(CC) $^ -o $@
 
-# SERVER OBJ FILES
-$(LST_OBJ) : $(SRC)listener.c $(CMN_H) $(MSG_Q_OBJ)
+# LISTENER OBJ FILES
+$(OBJ)listener-go-back-n.o : $(SRC)listener-go-back-n.c $(CMN_H) $(MSG_Q_OBJ)
 	$(CC) $(INC_FLAGS) $(C_FLAGS) -c $< -o $@
-# CLIENT OBJ FILES
-$(SND_OBJ) : $(SRC)sender.c $(CMN_H) $(MSG_Q_OBJ)
+$(OBJ)listener-selective-repeat.o : $(SRC)listener-selective-repeat.c $(CMN_H) $(MSG_Q_OBJ)
+	$(CC) $(INC_FLAGS) $(C_FLAGS) -c $< -o $@
+# SENDER OBJ FILES
+$(OBJ)sender-go-back-n.o : $(SRC)sender-go-back-n.c $(CMN_H) $(MSG_Q_OBJ)
+	$(CC) $(INC_FLAGS) $(C_FLAGS) -c $< -o $@
+$(OBJ)sender-selective-repeat.o : $(SRC)sender-selective-repeat.c $(CMN_H) $(MSG_Q_OBJ)
 	$(CC) $(INC_FLAGS) $(C_FLAGS) -c $< -o $@
 # TEST OBJ FILES
 $(TEST_OBJ) : $(SRC)test.c $(CMN_H) $(MSG_Q_OBJ)
@@ -82,5 +94,3 @@ clean:
 	rm -f $(ALL_OBJ) 
 	rmdir $(OBJ)
 	rm -f $(EXEC) test
-
-
