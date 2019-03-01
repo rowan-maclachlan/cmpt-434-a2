@@ -5,15 +5,15 @@
 // assignment 2
 
 #include <arpa/inet.h>
-#include <errno.h> 
+#include <errno.h>
 #include <limits.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <string.h> 
-#include <sys/types.h> 
-#include <sys/socket.h> 
-#include <time.h> 
+#include <string.h>
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <time.h>
 #include <unistd.h>
 #include <netdb.h>
 #include <netinet/in.h>
@@ -27,7 +27,7 @@
 uint32_t PROB_LOSS = 0;
 
 bool _init_args(int argc, char **argv) {
-    if (argc != 3) {
+    if (argc != 2) {
         return false;
     }
     if (0 >= sscanf(argv[1], "%u", &PROB_LOSS)) {
@@ -75,7 +75,7 @@ bool _msg_uncorrupted() {
     msg_buf = malloc(MAXLINE);
     while(1 >= num_bytes) {
         printf("Is this message uncorrupted? [Y/N]:\n");
-        num_bytes = getline(&msg_buf, &max, stdin); 
+        num_bytes = getline(&msg_buf, &max, stdin);
         if (1 == num_bytes) {
             fprintf(stderr, "Invalid input, try again:\n");
         }
@@ -85,7 +85,7 @@ bool _msg_uncorrupted() {
     }
     bool ret = msg_buf[0] == 'Y' || msg_buf[0] == 'y';
     free(msg_buf);
-    return ret; 
+    return ret;
 }
 
 void listen_loop(int sockfd) {
@@ -112,7 +112,7 @@ void listen_loop(int sockfd) {
 
         // put the first word of the msg_buf into ack
         deserialize_msg(msg_buf, &msg);
-        
+
         print_msg(&msg);
         if (_msg_correct(&msg, ack)) { // msg has expected ack
             if (_msg_uncorrupted()) {
@@ -135,7 +135,7 @@ void listen_loop(int sockfd) {
 int main(int argc, char *argv[]) {
     int sockfd, status;
     struct addrinfo hints, *server_addr, *p;
-   
+
     // initialize pseudo-random seed
     srand(time(NULL));
 
@@ -146,7 +146,7 @@ int main(int argc, char *argv[]) {
     else {
         printf("Using loss probability of %u/100.\n", PROB_LOSS);
     }
- 
+
     memset(&hints, 0, sizeof hints);
     hints.ai_family = AF_UNSPEC; // set to AF_INET to force IPv4
     hints.ai_socktype = SOCK_DGRAM;
@@ -156,19 +156,19 @@ int main(int argc, char *argv[]) {
         fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(status));
         return 1;
     }
-    
+
     // loop through all the results and bind to the first we can
     for(p = server_addr; p != NULL; p = p->ai_next) {
         if (-1 == (sockfd = socket(p->ai_family, p->ai_socktype, p->ai_protocol))) {
             perror("listener: socket");
-            continue; 
+            continue;
         }
         if (bind(sockfd, p->ai_addr, p->ai_addrlen) == -1) {
             close(sockfd);
             perror("listener: bind");
             continue;
         }
-        break; 
+        break;
     }
     if (p == NULL) {
         fprintf(stderr, "listener: failed to bind socket\n");
@@ -183,7 +183,7 @@ int main(int argc, char *argv[]) {
     listen_loop(sockfd);
 
     close(sockfd);
-    
+
     return 0;
 }
 
