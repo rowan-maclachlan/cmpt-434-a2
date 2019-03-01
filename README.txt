@@ -43,17 +43,16 @@ DESIGN
 
 TESTING
     There are two executable files.  In the directory sender_dir one can find
-    the executables 'selective-repeat-sender' and 'go-back-n-sender' for parts 2
-    and 1 of the assignment, respectively.  The same goes for the directory
-    listener_dir.
+    the executable 'sender' for parts 1 and 2 of the assignment.  The same goes
+    for the directory listener_dir.
 
     The applications can be run as such:
 
-    `./go-back-n-listener 10 8` to run the listener program with a 10% chance of
+    `./listener 10 8` to run the listener program with a 10% chance of
     dropping an ACK and a message buffer of size 8.  The message buffer size
     should be the same size as that given to the sender.
 
-    `./go-back-n-sender <ip> <port-number> 10 8` to run the sender program
+    `./sender <ip> 32000 10 8` to run the sender program
     with an 10 second timeout and a window size of 8.  The port number used by
     the listener is 32000, and the ip given to the sender should be the hostname of the
     listener.
