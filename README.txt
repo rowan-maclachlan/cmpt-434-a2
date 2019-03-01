@@ -43,28 +43,29 @@ DESIGN
 
 TESTING
     There are two executable files.  In the directory sender_dir one can find
-    the executable 'sender' for parts 1 and 2 of the assignment.  The same goes
-    for the directory listener_dir.
+    the executable 'sender-go-back-n' and 'sender-selective-repeat' for parts 1
+    and 2 of the assignment.  The same goes for the directory listener_dir.
 
     The applications can be run as such:
 
-    `./listener 10 8` to run the listener program with a 10% chance of
-    dropping an ACK and a message buffer of size 8.  The message buffer size
-    should be the same size as that given to the sender.
+    `./listener-go-back-n 10` to run the listener program with a 10% chance of dropping an
+    ACK.  The message buffer size should be the same size as that given to the
+    sender.  Run `./listener-selective-repeat` with an additional argument for
+    the max 'r' value.
 
-    `./sender <ip> 32000 10 8` to run the sender program
+    `./sender-go-back-n <ip> 32000 10 8` OR
+    `./sender-selective-repeat <ip> 32000 10 8` to run the sender program
     with an 10 second timeout and a window size of 8.  The port number used by
     the listener is 32000, and the ip given to the sender should be the hostname of the
     listener.
 
-    The selective-repeat programs are run similarily.
-    
 LIMITATIONS
     Individual messages do not have specific timeout constructs associated with
     them.  Instead, the timeout is reset every time the correct acknowledgement
     is received by the sender.  In practice, this means that some messages will
-    have longer timeouts than what was specified by the user.
-    The message queue used by the sender was recycled for the message buffer
-    used by the listener in the selective-repeat protocol.  In hindsight, this
-    was an overly complicated solution.  It was not as heavily tested as other
-    aspected of the message queue API.
+    have longer absolute timeouts than what was specified by the user.  The
+    message queue used by the sender was recycled for the message buffer used by
+    the listener in the selective-repeat protocol.  This led to an overly
+    complicated solution, as a better approach would have been a simple array.
+    The added API calls were not as heavily tested as other aspected of the
+    message queue API.
