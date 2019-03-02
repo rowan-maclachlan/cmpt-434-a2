@@ -5,9 +5,32 @@ CMPT 434 Eager
 
 Assignment 2
 
-SEE LIMITATIONS BELOW 
+(1) TESTING
 
-DESIGN
+(2) DESIGN
+
+(3) LIMITATIONS
+
+(1) TESTING
+    There are two executable files.  In the directory sender_dir one can find
+    the executable 'sender-go-back-n' and 'sender-selective-repeat' for parts 1
+    and 2 of the assignment.  The same goes for the directory listener_dir.
+
+    The applications can be run as such:
+
+    `./listener-go-back-n 10` to run the listener program with a 10% chance of dropping an
+    ACK.  The message buffer size should be the same size as that given to the
+    sender.  Run `./listener-selective-repeat` with an additional argument for
+    the max 'r' value.
+
+    `./sender-go-back-n <ip> 32000 10 8` OR
+    `./sender-selective-repeat <ip> 32000 10 8` to run the sender program
+    with an 10 second timeout and a window size of 8.  The port number used by
+    the listener is 32000, and the ip given to the sender should be the hostname of the
+    listener.
+
+
+(2) DESIGN
 
     TIME-OUTS
         In the case of the go-back-n sliding window part 1 protocol,
@@ -20,7 +43,7 @@ DESIGN
         When the expected message acknowledgement is received, the timeout is
         reset and we begin waiting on the next expected acknowledgement.
         In the case of the selective-repeat part 2 protocol, message timeout
-        only trigger a resend of the timed-out message, rather than the full
+        only triggers a resend of the timed-out message, rather than the full
         frame.
 
     MESSAGE-BUFFERS
@@ -41,31 +64,12 @@ DESIGN
         Input is managed with the select function call.  When the message buffer
         is full, the sender will not accept additional messages through stdin.
 
-TESTING
-    There are two executable files.  In the directory sender_dir one can find
-    the executable 'sender-go-back-n' and 'sender-selective-repeat' for parts 1
-    and 2 of the assignment.  The same goes for the directory listener_dir.
-
-    The applications can be run as such:
-
-    `./listener-go-back-n 10` to run the listener program with a 10% chance of dropping an
-    ACK.  The message buffer size should be the same size as that given to the
-    sender.  Run `./listener-selective-repeat` with an additional argument for
-    the max 'r' value.
-
-    `./sender-go-back-n <ip> 32000 10 8` OR
-    `./sender-selective-repeat <ip> 32000 10 8` to run the sender program
-    with an 10 second timeout and a window size of 8.  The port number used by
-    the listener is 32000, and the ip given to the sender should be the hostname of the
-    listener.
-
-LIMITATIONS
+(3) LIMITATIONS
     Individual messages do not have specific timeout constructs associated with
     them.  Instead, the timeout is reset every time the correct acknowledgement
     is received by the sender.  In practice, this means that some messages will
     have longer absolute timeouts than what was specified by the user.  The
-    message queue used by the sender was recycled for the message buffer used by
-    the listener in the selective-repeat protocol.  This led to an overly
-    complicated solution, as a better approach would have been a simple array.
-    The added API calls were not as heavily tested as other aspected of the
-    message queue API.
+    design of the message buffer used by the receiver with the selective-repeat
+    protocol was overly complicated.  This is because the message queue used by
+    the sender was recycled for the message buffer used by the listener.  A
+    better, simpler approach would have been a simple array.
